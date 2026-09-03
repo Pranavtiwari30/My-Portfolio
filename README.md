@@ -3,7 +3,7 @@
 A dynamic portfolio for an **AI Engineer & SAP Backend Developer**, rebuilt from
 a static page into a modern React app with two AI-driven features.
 
-**Live:** https://pranav-portfolio.vercel.app
+**Live:** https://pranav-portfolio-rust.vercel.app/
 
 ## Stack
 
