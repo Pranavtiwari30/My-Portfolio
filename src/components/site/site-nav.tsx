@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react"
-import { ArrowUpRight, Menu, X } from "lucide-react"
+import { ArrowUpRight } from "lucide-react"
+import { Menu, X } from "lucide"
+import { MorphIcon } from "morphicons/react"
 
 import { cn } from "@/lib/utils"
 import { nav, profile } from "@/lib/portfolio-data"
@@ -77,7 +79,12 @@ export function SiteNav() {
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
           >
-            {open ? <X /> : <Menu />}
+            <MorphIcon
+              icon={open ? X : Menu}
+              spring="snappy"
+              reducedMotion="user"
+              className="size-4"
+            />
           </Button>
         </div>
       </div>

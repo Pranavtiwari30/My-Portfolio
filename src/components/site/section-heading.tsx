@@ -18,8 +18,7 @@ export function SectionHeading({
 }: SectionHeadingProps) {
   return (
     <Reveal className={cn("mb-10 max-w-2xl md:mb-14", className)}>
-      <div className="mb-3 flex items-center gap-3">
-        <span className="h-px w-8 bg-brand" />
+      <div className="mb-3">
         <span className="font-mono text-xs tracking-widest text-brand uppercase">
           {eyebrow}
         </span>

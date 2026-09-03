@@ -29,13 +29,7 @@
       // Apply the saved theme before first paint to avoid a flash.
       try {
         var stored = localStorage.getItem("pranav-portfolio-theme")
-        var prefersDark =
-          window.matchMedia &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches
-        var isDark =
-          stored === "dark" ||
-          (!stored && true) ||
-          (stored === "system" && prefersDark)
+        var isDark = stored !== "light"
         var root = document.documentElement
         root.classList.toggle("dark", isDark)
         root.classList.toggle("light", !isDark)

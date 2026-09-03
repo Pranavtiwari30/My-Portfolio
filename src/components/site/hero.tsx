@@ -1,16 +1,10 @@
 import { useCallback, useRef } from "react"
-import { ArrowRight } from "lucide-react"
+import { ArrowRight, BadgeCheck } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { profile, projects, socials } from "@/lib/portfolio-data"
+import { profile, socials } from "@/lib/portfolio-data"
 import { buttonVariants } from "@/components/ui/button"
 import { GithubIcon, LinkedinIcon } from "./icons"
-
-const STATS = [
-  { value: String(projects.length), label: "Shipped projects" },
-  { value: "2.96×", label: "RAG inference speedup" },
-  { value: "Certified", label: "SAP ABAP backend" },
-]
 
 export function Hero() {
   const ref = useRef<HTMLDivElement>(null)
@@ -52,13 +46,19 @@ export function Hero() {
       />
 
       <div className="relative mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
-        <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs text-muted-foreground backdrop-blur-sm">
-          <span className="relative flex size-2">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand/70" />
-            <span className="relative inline-flex size-2 rounded-full bg-brand" />
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs text-muted-foreground backdrop-blur-sm">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand/70" />
+              <span className="relative inline-flex size-2 rounded-full bg-brand" />
+            </span>
+            Open to AI &amp; backend engineering roles and collaborations
           </span>
-          Open to AI &amp; backend engineering roles and collaborations
-        </p>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-3 py-1 text-xs text-muted-foreground backdrop-blur-sm">
+            <BadgeCheck className="size-3.5 text-brand" />
+            Certified SAP ABAP Developer
+          </span>
+        </div>
 
         <h1 className="font-heading text-5xl font-semibold tracking-tight sm:text-7xl lg:text-[5.5rem]">
           <span className="mb-1 block text-2xl font-medium text-muted-foreground/80 sm:text-3xl">
@@ -113,19 +113,6 @@ export function Hero() {
             </a>
           ) : null}
         </div>
-
-        <dl className="mt-14 grid max-w-lg grid-cols-3 gap-6 border-t border-border pt-6">
-          {STATS.map((stat) => (
-            <div key={stat.label}>
-              <dt className="font-heading text-xl font-semibold text-foreground sm:text-2xl">
-                {stat.value}
-              </dt>
-              <dd className="mt-0.5 text-xs text-muted-foreground">
-                {stat.label}
-              </dd>
-            </div>
-          ))}
-        </dl>
       </div>
     </section>
   )

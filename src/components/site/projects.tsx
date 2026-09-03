@@ -60,10 +60,12 @@ function ProjectCard({
   )
 
   const highlights = (
-    <ul className="space-y-2">
+    <ul className="space-y-2.5">
       {project.highlights.map((h) => (
-        <li key={h} className="flex gap-2.5 text-sm text-muted-foreground">
-          <span className="mt-2 size-1 shrink-0 rounded-full bg-brand" />
+        <li
+          key={h}
+          className="border-l border-border pl-3 text-sm text-muted-foreground"
+        >
           {h}
         </li>
       ))}
