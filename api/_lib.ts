@@ -39,8 +39,31 @@ export function notConfiguredResponse() {
   )
 }
 
+/**
+ * Email delivery for the contact assistant's "Send to Pranav" button.
+ * Uses Resend (https://resend.com) over its REST API — no SMTP, edge-safe.
+ *
+ *   RESEND_API_KEY      required   enables /api/contact; unset -> feature is off
+ *   CONTACT_TO_EMAIL    optional   recipient (defaults to profile.email)
+ *   CONTACT_FROM_EMAIL  optional   sender  (defaults to the shared Resend sender)
+ */
+const RESEND_API_KEY = process.env.RESEND_API_KEY ?? ""
+export const isEmailConfigured = RESEND_API_KEY.trim().length > 0
+
+export function emailNotConfiguredResponse() {
+  return Response.json(
+    {
+      error:
+        "Email delivery isn't configured on this deployment yet. It lights up once a RESEND_API_KEY environment variable is set. For now, use the copy or open-in-email options.",
+    },
+    { status: 503 }
+  )
+}
+
 export function errorResponse(err: unknown) {
   const message =
-    err instanceof Error ? err.message : "Unexpected error talking to the model."
+    err instanceof Error
+      ? err.message
+      : "Unexpected error talking to the model."
   return Response.json({ error: message }, { status: 502 })
 }
