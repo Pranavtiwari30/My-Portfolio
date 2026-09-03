@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" class="dark" style="color-scheme: dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0b0d0f" />
+
+    <title>Pranav Tiwari — AI Engineer & SAP Backend Developer</title>
+    <meta
+      name="description"
+      content="Portfolio of Pranav Tiwari: AI Engineer and Certified SAP ABAP Backend Developer building RAG systems, agentic AI, and enterprise-ready intelligent applications."
+    />
+    <meta name="author" content="Pranav Tiwari" />
+
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:title"
+      content="Pranav Tiwari — AI Engineer & SAP Backend Developer"
+    />
+    <meta
+      property="og:description"
+      content="AI Engineer & SAP Backend Developer bridging the gap between intelligent models and robust systems."
+    />
+    <meta name="twitter:card" content="summary" />
+
+    <script>
+      // Apply the saved theme before first paint to avoid a flash.
+      try {
+        var stored = localStorage.getItem("pranav-portfolio-theme")
+        var prefersDark =
+          window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches
+        var isDark =
+          stored === "dark" ||
+          (!stored && true) ||
+          (stored === "system" && prefersDark)
+        var root = document.documentElement
+        root.classList.toggle("dark", isDark)
+        root.classList.toggle("light", !isDark)
+        root.style.colorScheme = isDark ? "dark" : "light"
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
