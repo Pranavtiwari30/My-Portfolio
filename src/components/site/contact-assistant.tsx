@@ -1,11 +1,26 @@
-import { useMemo, useState } from "react"
-import { Check, Copy, Mail, RotateCcw, Sparkles, TriangleAlert } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  Check,
+  Copy,
+  Mail,
+  RefreshCw,
+  RotateCcw,
+  Sparkles,
+  TriangleAlert,
+} from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { profile } from "@/lib/portfolio-data"
-import { copyToClipboard, extractEmailDraft, mailtoLink } from "@/lib/parse"
+import {
+  type ContactDraft,
+  copyToClipboard,
+  extractContactDraft,
+  isValidEmail,
+  mailtoLink,
+} from "@/lib/parse"
 import { useTextStream } from "@/lib/use-text-stream"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Conversation,
   ConversationContent,
@@ -22,6 +37,8 @@ import { Shimmer } from "@/components/ai-elements/shimmer"
 import { PromptBox } from "./prompt-box"
 
 type ChatMessage = { id: string; role: "user" | "assistant"; content: string }
+
+type SendState = "idle" | "sending" | "sent" | "error"
 
 const STARTERS = [
   "I'd like to hire you for an AI engineering role",
@@ -41,7 +58,7 @@ const wire = (messages: ChatMessage[]) =>
 export function ContactAssistant() {
   // Only completed turns live here; the in-flight assistant reply is `text`.
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [copied, setCopied] = useState(false)
+  const [sentTo, setSentTo] = useState<string | null>(null)
   const { text, status, error, run, stop, reset } = useTextStream("/api/chat")
 
   const isBusy = status === "streaming"
@@ -70,23 +87,25 @@ export function ContactAssistant() {
     stop()
     reset()
     setMessages([])
-    setCopied(false)
+    setSentTo(null)
   }
 
-  const draft = useMemo(() => {
-    if (isBusy) return null
-    const lastAssistant = [...messages]
-      .reverse()
-      .find((m) => m.role === "assistant")
-    return lastAssistant ? extractEmailDraft(lastAssistant.content) : null
+  // The confirm card is keyed to the newest assistant message, so a re-draft
+  // remounts it with fresh form state (no setState-in-effect needed).
+  const { draft, draftKey } = useMemo(() => {
+    if (isBusy) return { draft: null, draftKey: null as string | null }
+    const last = [...messages].reverse().find((m) => m.role === "assistant")
+    return {
+      draft: last ? extractContactDraft(last.content) : null,
+      draftKey: last?.id ?? null,
+    }
   }, [messages, isBusy])
 
-  async function handleCopy() {
-    if (draft && (await copyToClipboard(draft))) {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
+  const userTurns = messages.filter((m) => m.role === "user").length
+  const transcript = wire(messages)
+    .map((m) => `${m.role}: ${m.content}`)
+    .join("\n\n")
+    .slice(0, 4000)
 
   const hasThread = messages.length > 0 || isBusy
   const showStreamingBubble = isBusy && text.length > 0
@@ -119,7 +138,7 @@ export function ContactAssistant() {
               className="h-full"
               icon={<Sparkles className="size-5 text-brand" />}
               title="Draft an intro to Pranav"
-              description="Tell me what you're after and I'll help you write a clear message to send."
+              description="Tell me what you're after and I'll help you write a clear message — then send it to Pranav right here."
             />
           ) : (
             messages.map((message) => (
@@ -166,31 +185,32 @@ export function ContactAssistant() {
         <ConversationScrollButton />
       </Conversation>
 
-      {draft ? (
-        <div className="flex flex-wrap items-center gap-2 border-t border-border bg-brand/5 px-4 py-2.5">
-          <span className="text-xs text-muted-foreground">Draft ready —</span>
+      {draft && !sentTo ? (
+        <ConfirmCard
+          key={draftKey}
+          draft={draft}
+          transcript={transcript}
+          messageCount={userTurns}
+          onSent={setSentTo}
+        />
+      ) : null}
+
+      {sentTo ? (
+        <div className="flex items-center gap-2 border-t border-border bg-brand/5 px-4 py-3 text-sm">
+          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-brand/15 text-brand">
+            <Check className="size-3" />
+          </span>
+          <span>
+            Sent to {profile.firstName}. He&apos;ll reply to{" "}
+            <span className="font-medium">{sentTo}</span>.
+          </span>
           <Button
-            variant="outline"
-            onClick={handleCopy}
-            className="h-7 gap-1 px-2.5 text-xs"
+            variant="ghost"
+            onClick={resetChat}
+            className="ml-auto h-6 px-2 text-xs"
           >
-            {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-            {copied ? "Copied" : "Copy"}
+            Start over
           </Button>
-          <a
-            href={mailtoLink(
-              profile.email,
-              "Reaching out via your portfolio",
-              draft
-            )}
-            className={cn(
-              buttonVariants({ size: "sm" }),
-              "h-7 gap-1 px-2.5 text-xs"
-            )}
-          >
-            <Mail className="size-3" />
-            Open in email
-          </a>
         </div>
       ) : null}
 
@@ -208,8 +228,185 @@ export function ContactAssistant() {
           onSend={send}
           onStop={stop}
           isStreaming={isBusy}
+          disabled={sentTo !== null}
           placeholder="e.g. I'm hiring for an applied AI role and your RAG work stood out…"
         />
+      </div>
+    </div>
+  )
+}
+
+type ConfirmCardProps = {
+  draft: ContactDraft
+  transcript: string
+  messageCount: number
+  onSent: (email: string) => void
+}
+
+function ConfirmCard({
+  draft,
+  transcript,
+  messageCount,
+  onSent,
+}: ConfirmCardProps) {
+  const [name, setName] = useState(draft.name)
+  const [email, setEmail] = useState(draft.email)
+  const [company, setCompany] = useState("") // honeypot — empty for humans
+  const [copied, setCopied] = useState(false)
+  const [sendState, setSendState] = useState<SendState>("idle")
+  const [sendError, setSendError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => () => abortRef.current?.abort(), [])
+
+  const emailInvalid = email.length > 0 && !isValidEmail(email)
+  const canSend =
+    sendState !== "sending" && name.trim() !== "" && isValidEmail(email)
+
+  async function handleCopy() {
+    if (await copyToClipboard(draft.body)) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  async function handleSend() {
+    if (!canSend) return
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    setSendState("sending")
+    setSendError(null)
+
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          subject: draft.subject,
+          message: draft.body,
+          company,
+          messageCount,
+          transcript,
+        }),
+      })
+      const data = (await res.json().catch(() => null)) as {
+        ok?: true
+        error?: string
+      } | null
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error ?? `Couldn't send (${res.status}).`)
+      }
+      onSent(email.trim())
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return
+      setSendError((err as Error).message || "Something went wrong.")
+      setSendState("error")
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null
+    }
+  }
+
+  return (
+    <div className="relative space-y-3 border-t border-border bg-brand/5 px-4 py-3">
+      <p className="text-xs font-medium text-muted-foreground">
+        Review &amp; send to {profile.firstName}
+      </p>
+
+      <div className="max-h-32 overflow-y-auto rounded-lg border border-border bg-background/60 p-2.5 text-xs whitespace-pre-wrap">
+        <span className="text-muted-foreground">Subject: </span>
+        {draft.subject || "Reaching out via your portfolio"}
+        {"\n\n"}
+        {draft.body}
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Your name"
+          autoComplete="name"
+          className="h-8 text-xs"
+        />
+        <Input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@company.com"
+          autoComplete="email"
+          aria-invalid={emailInvalid}
+          className="h-8 text-xs"
+        />
+      </div>
+      <p className="text-[0.7rem] text-muted-foreground">
+        Your email is used only as the reply-to on this one message.
+      </p>
+
+      {/* honeypot — off-screen, not display:none, so bots still fill it */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-0 left-[-9999px] h-px w-px overflow-hidden opacity-0"
+      >
+        <label>
+          Company (leave blank)
+          <input
+            tabIndex={-1}
+            autoComplete="off"
+            name="company"
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+          />
+        </label>
+      </div>
+
+      {sendState === "error" && sendError ? (
+        <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <p>{sendError}</p>
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          onClick={handleSend}
+          disabled={!canSend}
+          className="h-8 gap-1.5"
+        >
+          {sendState === "sending" ? (
+            <RefreshCw className="size-3.5 animate-spin" />
+          ) : (
+            <Mail className="size-3.5" />
+          )}
+          {sendState === "sending"
+            ? "Sending…"
+            : `Send to ${profile.firstName}`}
+        </Button>
+
+        <Button
+          variant="outline"
+          onClick={handleCopy}
+          className="h-8 gap-1 px-2.5 text-xs"
+        >
+          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+        <a
+          href={mailtoLink(
+            profile.email,
+            draft.subject || "Reaching out via your portfolio",
+            draft.body
+          )}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            "h-8 gap-1 px-2.5 text-xs"
+          )}
+        >
+          <Mail className="size-3" />
+          Open in email
+        </a>
       </div>
     </div>
   )
