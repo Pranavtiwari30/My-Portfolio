@@ -1,10 +1,6 @@
-/** Loose email check — catches typos, not a full RFC validator. */
-export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import { isValidEmail } from "./validation"
 
-export function isValidEmail(value: string): boolean {
-  const v = value.trim()
-  return v.length >= 3 && v.length <= 254 && EMAIL_RE.test(v)
-}
+export { EMAIL_RE, isValidEmail } from "./validation"
 
 export type ContactDraft = {
   /** Visitor display name, or "" if the model didn't supply a real one. */
@@ -17,65 +13,87 @@ export type ContactDraft = {
   body: string
 }
 
+type DraftHeaders = Omit<ContactDraft, "body">
+
 const HEADER_RE = /^\s*(from|reply-to|name|email|subject)\s*:\s*(.+?)\s*$/i
 const ANGLE_EMAIL_RE = /<\s*([^<>@\s]+@[^<>@\s]+)\s*>/
 const BARE_EMAIL_RE = /[^\s<>()]+@[^\s<>()]+\.[^\s<>()]+/
+const MAX_HEADER_LINES = 8
 
-/**
- * Pull a structured outreach draft from an assistant message. The assistant is
- * told to emit a single fenced ```email block with optional From:/Subject:
- * pseudo-headers, a blank line, then the body. Every field degrades to "" so
- * the confirm UI can let the visitor fill it in.
- */
-export function extractContactDraft(markdown: string): ContactDraft | null {
-  const block = markdown.match(/```email\s*\n([\s\S]*?)```/i)?.[1]
-  if (!block) return null
-
-  const lines = block.replace(/\r\n/g, "\n").split("\n")
-  let name = ""
-  let email = ""
-  let subject = ""
-  let i = 0
-
-  for (; i < lines.length && i < 8; i++) {
-    const line = lines[i]
-    if (line.trim() === "") {
-      i++
+function applyDraftHeader(
+  headers: DraftHeaders,
+  key: string,
+  value: string
+): void {
+  switch (key) {
+    case "subject":
+      headers.subject ||= value
       break
-    }
-    const m = line.match(HEADER_RE)
-    if (!m) break
-    const key = m[1].toLowerCase()
-    const val = m[2].trim()
-    if (key === "subject") subject ||= val
-    else if (key === "name") name ||= val
-    else if (key === "email" || key === "reply-to")
-      email ||= val.match(BARE_EMAIL_RE)?.[0] ?? ""
-    else if (key === "from") {
-      email ||=
-        val.match(ANGLE_EMAIL_RE)?.[1] ?? val.match(BARE_EMAIL_RE)?.[0] ?? ""
-      const display = val
+    case "name":
+      headers.name ||= value
+      break
+    case "email":
+    case "reply-to":
+      headers.email ||= value.match(BARE_EMAIL_RE)?.[0] ?? ""
+      break
+    case "from": {
+      headers.email ||=
+        value.match(ANGLE_EMAIL_RE)?.[1] ??
+        value.match(BARE_EMAIL_RE)?.[0] ??
+        ""
+      const displayName = value
         .replace(/<[^>]*>/, "")
         .replace(BARE_EMAIL_RE, "")
         .replace(/[()]/g, "")
         .trim()
-      if (display) name ||= display
+      headers.name ||= displayName
+      break
     }
   }
+}
 
-  const sawHeaders = i > 0 && (name !== "" || email !== "" || subject !== "")
-  const body = (sawHeaders ? lines.slice(i).join("\n") : block).trim()
+function parseDraftBlock(block: string): ContactDraft {
+  const lines = block.replace(/\r\n/g, "\n").split("\n")
+  const headers: DraftHeaders = { name: "", email: "", subject: "" }
+  let bodyStart = 0
 
-  // Drop unfilled template tokens like "[your name]" so the confirm UI shows an
-  // empty required field instead of a fake value.
-  const clean = /[[\]<>]/.test(name) ? "" : name.trim()
+  for (
+    ;
+    bodyStart < lines.length && bodyStart < MAX_HEADER_LINES;
+    bodyStart++
+  ) {
+    const line = lines[bodyStart]
+    if (line.trim() === "") {
+      bodyStart++
+      break
+    }
+    const match = line.match(HEADER_RE)
+    if (!match) break
+    applyDraftHeader(headers, match[1].toLowerCase(), match[2].trim())
+  }
 
+  const sawHeaders = bodyStart > 0 && Object.values(headers).some(Boolean)
+  const body = (sawHeaders ? lines.slice(bodyStart).join("\n") : block).trim()
+
+  // Unfilled model template tokens should leave required form fields empty.
+  const name = /[[\]<>]/.test(headers.name) ? "" : headers.name.trim()
   return {
-    name: clean.slice(0, 100),
-    email: isValidEmail(email) ? email.trim().toLowerCase() : "",
-    subject: subject.slice(0, 150),
+    name: name.slice(0, 100),
+    email: isValidEmail(headers.email)
+      ? headers.email.trim().toLowerCase()
+      : "",
+    subject: headers.subject.slice(0, 150),
     body,
   }
+}
+
+/**
+ * Read the first fenced email draft, preserving the body and first header
+ * values. Missing or invalid identity fields stay editable in the confirm UI.
+ */
+export function extractContactDraft(markdown: string): ContactDraft | null {
+  const block = markdown.match(/```email\s*\n([\s\S]*?)```/i)?.[1]
+  return block ? parseDraftBlock(block) : null
 }
 
 export async function copyToClipboard(text: string): Promise<boolean> {
@@ -83,6 +101,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     await navigator.clipboard.writeText(text)
     return true
   } catch {
+    // Clipboard access may be denied; the UI also provides an email link.
     return false
   }
 }

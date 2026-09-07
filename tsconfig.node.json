@@ -6,19 +6,22 @@
     "module": "esnext",
     "types": ["node"],
     "skipLibCheck": true,
-
-    /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
-
-    /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "strict": true
   },
-  "include": ["vite.config.ts", "vite-dev-api.ts", "api"]
+  "include": [
+    "vite.config.ts",
+    "vite-dev-api.ts",
+    "api",
+    "tests/backend*.test.ts",
+    "tests/dev-api.test.ts"
+  ]
 }

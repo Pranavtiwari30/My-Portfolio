@@ -1,4 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
+import { RequestError } from "./_request"
 
 /**
  * Provider wiring for the portfolio's AI features.
@@ -20,16 +21,17 @@ const AI_BASE_URL = process.env.AI_BASE_URL ?? "https://api.openai.com/v1"
 export const AI_MODEL = process.env.AI_MODEL ?? "gpt-4o-mini"
 export const isAIConfigured = AI_API_KEY.trim().length > 0
 
-export function getModel() {
-  const provider = createOpenAICompatible({
-    name: "portfolio-ai",
-    baseURL: AI_BASE_URL,
-    apiKey: AI_API_KEY,
-  })
+const provider = createOpenAICompatible({
+  name: "portfolio-ai",
+  baseURL: AI_BASE_URL,
+  apiKey: AI_API_KEY,
+})
+
+export function getModel(): ReturnType<typeof provider> {
   return provider(AI_MODEL)
 }
 
-export function notConfiguredResponse() {
+export function notConfiguredResponse(): Response {
   return Response.json(
     {
       error:
@@ -50,7 +52,7 @@ export function notConfiguredResponse() {
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? ""
 export const isEmailConfigured = RESEND_API_KEY.trim().length > 0
 
-export function emailNotConfiguredResponse() {
+export function emailNotConfiguredResponse(): Response {
   return Response.json(
     {
       error:
@@ -60,10 +62,13 @@ export function emailNotConfiguredResponse() {
   )
 }
 
-export function errorResponse(err: unknown) {
+export function errorResponse(err: unknown): Response {
   const message =
     err instanceof Error
       ? err.message
       : "Unexpected error talking to the model."
-  return Response.json({ error: message }, { status: 502 })
+  return Response.json(
+    { error: message },
+    { status: err instanceof RequestError ? err.status : 502 }
+  )
 }

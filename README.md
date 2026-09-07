@@ -25,10 +25,42 @@ npm run build        # tsc -b && vite build  ->  dist/
 npm run preview      # serve the production build
 npm run typecheck
 npm run lint
+npm test             # regression tests; external AI/email calls are mocked
 ```
 
 The `/api` routes are Vercel Edge Functions. In `npm run dev` they are served by a
 small dev-only middleware (`vite-dev-api.ts`) so the AI features work locally too.
+
+`typecheck` checks the frontend, Edge routes, dev middleware, and tests using
+strict TypeScript settings. Run `npm test`, `npm run typecheck`, `npm run lint`,
+and `npm run build` before opening a pull request.
+
+### API validation and reliability
+
+The backend is TypeScript. Runtime Zod schemas in `api/_schemas.ts` validate JSON
+before provider calls while preserving established defaults, filtering,
+truncation, and contact field normalization. Unrecognized object keys are
+ignored for compatibility; invalid shapes receive a 400 response. Request
+readers stop at 16,000 decoded UTF-16 characters for contact and 128,000 for AI
+requests, returning 413 without buffering the rest of an oversized body.
+
+AI calls share two SDK retries with exponential backoff, a 60-second total
+deadline, a 20-second first-content deadline, and a 15-second gap limit between
+content chunks. Errors before the first text chunk return JSON with status 502;
+failures after streaming starts terminate the stream. Partial output is never
+replayed by a retry.
+
+Email delivery retries network failures, timeouts, HTTP 408/429, and server
+errors at most twice, with exponential backoff, jitter, and `Retry-After` support.
+Each attempt has an eight-second deadline within a 25-second operation deadline.
+The same Resend idempotency key and payload are reused across automatic retries
+of one send. Separate visitor submissions are separate operations. Rate limiting
+remains best-effort per Edge isolate (three sends per ten minutes and eight per
+day), with bounded storage; it is not a shared, durable quota.
+
+The browser cancels stale streams, releases readers, and batches text rendering
+by animation frame. The local dev bridge streams uploads and honors response
+backpressure, forwarding client disconnects to the handler's abort signal.
 
 ## AI features
 
