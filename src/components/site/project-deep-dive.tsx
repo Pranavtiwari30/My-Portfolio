@@ -2,7 +2,8 @@ import { useEffect, useState } from "react"
 import { Check, Copy, RefreshCw, Sparkles, TriangleAlert } from "lucide-react"
 
 import type { Project } from "@/lib/portfolio-data"
-import { copyToClipboard } from "@/lib/parse"
+import { DEEP_DIVE_ANGLES, type DeepDiveAngle } from "@/lib/deep-dive"
+import { useClipboard } from "@/lib/use-clipboard"
 import { useTextStream } from "@/lib/use-text-stream"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,15 +17,6 @@ import { MessageResponse } from "@/components/ai-elements/message"
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion"
 import { Shimmer } from "@/components/ai-elements/shimmer"
 
-const ANGLES = [
-  { id: "architecture", label: "Architecture" },
-  { id: "why-it-matters", label: "Why it matters" },
-  { id: "tradeoffs", label: "Tradeoffs" },
-  { id: "how-built", label: "How it's built" },
-] as const
-
-type AngleId = (typeof ANGLES)[number]["id"]
-
 export function ProjectDeepDive({
   project,
   open,
@@ -34,15 +26,15 @@ export function ProjectDeepDive({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const [angle, setAngle] = useState<AngleId>("architecture")
-  const [copied, setCopied] = useState(false)
+  const [angle, setAngle] = useState<DeepDiveAngle>("architecture")
+  const { copied, copy, resetCopied } = useClipboard()
   const { text, status, error, run, stop } = useTextStream("/api/deep-dive")
 
   const isLoading = status === "streaming"
 
-  function generate(next: AngleId) {
+  function generate(next: DeepDiveAngle): void {
     setAngle(next)
-    setCopied(false)
+    resetCopied()
     void run({ project: project.name, angle: next })
   }
 
@@ -55,15 +47,7 @@ export function ProjectDeepDive({
     } else {
       stop()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
-
-  async function handleCopy() {
-    if (await copyToClipboard(text)) {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
+  }, [open, project.name, status, run, stop])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -82,7 +66,7 @@ export function ProjectDeepDive({
           </DialogDescription>
           <div className="pt-2">
             <Suggestions>
-              {ANGLES.map((a) => (
+              {DEEP_DIVE_ANGLES.map((a) => (
                 <Suggestion
                   key={a.id}
                   suggestion={a.label}
@@ -125,7 +109,7 @@ export function ProjectDeepDive({
             <Button
               size="sm"
               variant="outline"
-              onClick={handleCopy}
+              onClick={() => void copy(text)}
               disabled={!text || isLoading}
             >
               {copied ? <Check /> : <Copy />}

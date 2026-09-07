@@ -62,8 +62,7 @@ export const MessageResponse = memo(
     <div className={cn("md-content", className)}>
       <Markdown options={MD_OPTIONS}>{children || ""}</Markdown>
     </div>
-  ),
-  (prev, next) => prev.children === next.children
+  )
 )
 
 MessageResponse.displayName = "MessageResponse"

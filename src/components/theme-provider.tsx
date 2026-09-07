@@ -1,7 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
 
-type Theme = "dark" | "light"
+import {
+  isTheme,
+  readStoredTheme,
+  saveStoredTheme,
+  type Theme,
+} from "@/lib/theme-storage"
 
 type ThemeProviderProps = {
   children: React.ReactNode
@@ -15,19 +20,9 @@ type ThemeProviderState = {
   setTheme: (theme: Theme) => void
 }
 
-const THEME_VALUES: Theme[] = ["dark", "light"]
-
 const ThemeProviderContext = React.createContext<
   ThemeProviderState | undefined
 >(undefined)
-
-function isTheme(value: string | null): value is Theme {
-  if (value === null) {
-    return false
-  }
-
-  return THEME_VALUES.includes(value as Theme)
-}
 
 function disableTransitionsTemporarily() {
   const style = document.createElement("style")
@@ -74,19 +69,14 @@ export function ThemeProvider({
   disableTransitionOnChange = true,
   ...props
 }: ThemeProviderProps) {
-  const [theme, setThemeState] = React.useState<Theme>(() => {
-    const storedTheme = localStorage.getItem(storageKey)
-    if (isTheme(storedTheme)) {
-      return storedTheme
-    }
-
-    return defaultTheme
-  })
+  const [theme, setThemeState] = React.useState<Theme>(() =>
+    readStoredTheme(storageKey, defaultTheme)
+  )
 
   const setTheme = React.useCallback(
     (nextTheme: Theme) => {
-      localStorage.setItem(storageKey, nextTheme)
       setThemeState(nextTheme)
+      saveStoredTheme(storageKey, nextTheme)
     },
     [storageKey]
   )
@@ -131,11 +121,7 @@ export function ThemeProvider({
         return
       }
 
-      setThemeState((currentTheme) => {
-        const nextTheme = currentTheme === "dark" ? "light" : "dark"
-        localStorage.setItem(storageKey, nextTheme)
-        return nextTheme
-      })
+      setTheme(theme === "dark" ? "light" : "dark")
     }
 
     window.addEventListener("keydown", handleKeyDown)
@@ -143,11 +129,14 @@ export function ThemeProvider({
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [storageKey])
+  }, [theme, setTheme])
 
   React.useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.storageArea !== localStorage) {
+      try {
+        if (event.storageArea !== localStorage) return
+      } catch {
+        // Access can be revoked after mount; keep the current in-memory theme.
         return
       }
 

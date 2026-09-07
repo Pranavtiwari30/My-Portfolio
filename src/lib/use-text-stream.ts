@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
+import { errorMessage, requestTextStream } from "./client-api"
+
 export type StreamStatus = "idle" | "streaming" | "done" | "error"
 
 type UseTextStream = {
@@ -15,79 +17,96 @@ type UseTextStream = {
   reset: () => void
 }
 
-/**
- * Minimal client for an endpoint that returns a streamed `text/plain` body
- * (AI SDK `result.toTextStreamResponse()`). Keeps the client bundle tiny.
- */
+const STREAM_TIMEOUT_MS = 90_000
+
+/** A cancellable client for AI SDK's plain-text streaming responses. */
 export function useTextStream(endpoint: string): UseTextStream {
   const [text, setText] = useState("")
   const [status, setStatus] = useState<StreamStatus>("idle")
   const [error, setError] = useState<string | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
+  const frameRef = useRef<number | null>(null)
+  const pendingTextRef = useRef("")
 
-  const stop = useCallback(() => {
-    controllerRef.current?.abort()
+  const cancel = useCallback((): void => {
+    const controller = controllerRef.current
     controllerRef.current = null
-    setStatus((s) => (s === "streaming" ? "done" : s))
+    controller?.abort()
+    if (frameRef.current !== null) {
+      cancelAnimationFrame(frameRef.current)
+      frameRef.current = null
+    }
   }, [])
 
-  const reset = useCallback(() => {
+  const stop = useCallback((): void => {
+    const wasStreaming = controllerRef.current !== null
+    cancel()
+    if (wasStreaming) setText(pendingTextRef.current)
+    setStatus((current) => (current === "streaming" ? "done" : current))
+  }, [cancel])
+
+  const reset = useCallback((): void => {
+    cancel()
     setText("")
     setError(null)
     setStatus("idle")
-  }, [])
+  }, [cancel])
 
   const run = useCallback(
     async (body: unknown): Promise<string | null> => {
-      controllerRef.current?.abort()
+      cancel()
       const controller = new AbortController()
       controllerRef.current = controller
+      const isCurrent = (): boolean => controllerRef.current === controller
+      const signal = AbortSignal.any([
+        controller.signal,
+        AbortSignal.timeout(STREAM_TIMEOUT_MS),
+      ])
 
       setText("")
       setError(null)
       setStatus("streaming")
 
+      let latestText = ""
+      pendingTextRef.current = ""
       try {
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        })
-
-        if (!res.ok || !res.body) {
-          const payload = (await res.json().catch(() => null)) as {
-            error?: string
-          } | null
-          throw new Error(payload?.error ?? `Request failed (${res.status}).`)
-        }
-
-        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
-
-        let acc = ""
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
-          if (value) {
-            acc += value
-            setText(acc)
+        const finalText = await requestTextStream(
+          endpoint,
+          body,
+          signal,
+          (next) => {
+            if (!isCurrent()) return
+            latestText = next
+            pendingTextRef.current = next
+            // Markdown rendering is expensive; coalesce tokens to one update per
+            // frame, then always flush the complete response below.
+            if (frameRef.current === null) {
+              frameRef.current = requestAnimationFrame(() => {
+                frameRef.current = null
+                if (isCurrent()) setText(latestText)
+              })
+            }
           }
-        }
+        )
+        if (!isCurrent()) return null
+        setText(finalText)
         setStatus("done")
-        return acc
+        return finalText
       } catch (err) {
-        if ((err as Error).name === "AbortError") return null
-        setError((err as Error).message || "Something went wrong.")
+        if (!isCurrent() || controller.signal.aborted) return null
+        setText(latestText)
+        setError(errorMessage(err))
         setStatus("error")
         return null
       } finally {
-        if (controllerRef.current === controller) controllerRef.current = null
+        // A superseded request must not cancel the newer request's frame.
+        if (isCurrent()) cancel()
       }
     },
-    [endpoint]
+    [endpoint, cancel]
   )
 
-  useEffect(() => () => controllerRef.current?.abort(), [])
+  useEffect(() => cancel, [cancel])
 
   return { text, status, error, run, stop, reset }
 }

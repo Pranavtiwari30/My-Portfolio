@@ -20,9 +20,20 @@ export function SiteNav() {
   }, [])
 
   useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : ""
+    if (!open) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    const desktop = window.matchMedia("(min-width: 48rem)")
+    const closeOnDesktop = () => {
+      if (desktop.matches) setOpen(false)
+    }
+    desktop.addEventListener("change", closeOnDesktop)
+
     return () => {
-      document.body.style.overflow = ""
+      desktop.removeEventListener("change", closeOnDesktop)
+      document.body.style.overflow = previousOverflow
     }
   }, [open])
 
